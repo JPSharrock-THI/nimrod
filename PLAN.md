@@ -47,33 +47,42 @@ nimrod/
 ## CLI Interface
 
 ```bash
-# Basic usage
+# Minimal — auto-detects binary columns, pretty JSON to stdout
+java -jar nimrod.jar decode \
+    --schema schemas/game_event.fbs \
+    --csv export.csv
+
+# Explicit column targeting
 java -jar nimrod.jar decode \
     --schema schemas/game_event.fbs \
     --csv export.csv \
     --column payload
 
-# With options
+# Compact JSON to a file
 java -jar nimrod.jar decode \
     --schema schemas/game_event.fbs \
     --csv export.csv \
-    --column payload \
-    --encoding base64 \
-    --pretty \
+    --format compact \
     --output decoded.json
+
+# NDJSON (one JSON object per line) — useful for piping
+java -jar nimrod.jar decode \
+    --schema schemas/game_event.fbs \
+    --csv export.csv \
+    --format ndjson | jq '.payload'
 ```
 
 ### Arguments
 
-| Argument       | Required | Default  | Description                                      |
-|----------------|----------|----------|--------------------------------------------------|
-| `--schema`     | Yes      | —        | Path to `.fbs` FlatBuffers schema file            |
-| `--csv`        | Yes      | —        | Path to CSV export file                           |
-| `--column`     | Yes      | —        | Column name(s) containing FlatBuffer blobs        |
-| `--encoding`   | No       | base64   | Encoding of binary data in CSV (base64 / hex)     |
-| `--pretty`     | No       | false    | Pretty-print JSON output                          |
-| `--output`     | No       | stdout   | Output file path (default: print to console)      |
-| `--root-type`  | No       | auto     | Root table type in schema (auto-detect if single) |
+| Argument       | Required | Default  | Description                                                                 |
+|----------------|----------|----------|-----------------------------------------------------------------------------|
+| `--schema`     | Yes      | —        | Path to `.fbs` FlatBuffers schema file                                      |
+| `--csv`        | Yes      | —        | Path to CSV export file                                                     |
+| `--column`     | No       | auto     | Column name(s) containing FlatBuffer blobs. Omit to auto-detect binary data |
+| `--encoding`   | No       | base64   | Encoding of binary data in CSV: `base64`, `hex`, or `raw`                   |
+| `--format`     | No       | pretty   | Output format: `pretty` (default), `compact`, or `ndjson`                   |
+| `--output`     | No       | stdout   | Output file path (default: print to console)                                |
+| `--root-type`  | No       | auto     | Root table type in schema (auto-detect if single root)                      |
 
 ## Implementation Phases
 
@@ -84,8 +93,9 @@ java -jar nimrod.jar decode \
 
 ### Phase 2 — CSV Ingestion
 - Read CSV with Apache Commons CSV
-- Identify target column(s) by name
-- Decode Base64/hex binary data from string cells
+- If `--column` provided: target those columns
+- If `--column` omitted: auto-detect binary columns (trial-decode against schema, log findings)
+- Decode Base64/hex/raw binary data from string cells
 - Pass through non-binary columns as-is
 
 ### Phase 3 — FlatBuffer Decoding
@@ -97,8 +107,8 @@ java -jar nimrod.jar decode \
 ### Phase 4 — JSON Output
 - Replace binary column value with decoded map
 - Serialize full row as JSON via Jackson
-- Support pretty-print and NDJSON modes
-- Write to stdout or file
+- Pretty JSON (default), compact JSON, NDJSON modes via `--format`
+- Write to stdout or file via `--output`
 
 ### Phase 5 — Polish
 - Error handling and user-friendly messages
@@ -106,18 +116,31 @@ java -jar nimrod.jar decode \
 - Unit and integration tests
 - README with usage examples
 
-## Key Design Decisions
+## Design Decisions (finalised)
 
-### Schema handling: Runtime reflection (chosen)
-We use FlatBuffers reflection/schema parsing rather than compiled Java classes. This means:
-- **Pro**: One JAR works with any schema — no rebuild needed per game/table
-- **Con**: Slightly more complex decoding logic
-- **Alternative**: If reflection proves too painful, fall back to requiring codegen and a classpath of generated classes
+### 1. Schema handling → Runtime reflection
+We use FlatBuffers reflection/schema parsing rather than compiled Java classes.
+- One JAR works with any `.fbs` schema — no rebuild needed per game/table
+- If reflection proves too painful, fallback option is requiring codegen + classpath of generated classes
 
-### Binary encoding in CSV
-DBeaver typically exports binary columns as Base64 or hex. We default to Base64 but allow override via `--encoding`. Auto-detection is a stretch goal.
+### 2. Column detection → Explicit flag with auto-detect fallback
+- When `--column` is provided: decode only those named columns
+- When `--column` is omitted: scan each column for Base64/hex patterns and attempt trial-decode against the schema. Columns that successfully decode as valid FlatBuffers are treated as binary
+- Auto-detect logs which columns it identified so the user can verify
 
-### Why Spring Boot for a CLI?
+### 3. Binary encoding → Base64 default, hex and raw supported
+- **Base64** (default) — DBeaver's typical export format for binary columns
+- **Hex** — alternate encoding some tools use
+- **Raw** — for CSVs where binary bytes are written directly (edge case)
+- Controlled via `--encoding` flag
+
+### 4. Output format → Pretty JSON default, compact and NDJSON available
+- **Pretty** (default) — human-readable, indented JSON array. Best for inspection
+- **Compact** — minified JSON array. Smaller file size
+- **NDJSON** — one JSON object per line, no wrapping array. Best for piping into `jq`, streaming, or loading into other tools
+- Controlled via `--format` flag
+
+### 5. Why Spring Boot for a CLI?
 - Familiar to the team
 - DI makes testing easy
 - Picocli integration via `picocli-spring-boot-starter` is seamless

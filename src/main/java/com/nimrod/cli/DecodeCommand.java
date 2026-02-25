@@ -16,6 +16,10 @@ import java.util.concurrent.Callable;
 )
 public class DecodeCommand implements Callable<Integer> {
 
+    public enum Encoding { base64, hex, raw }
+
+    public enum Format { pretty, compact, ndjson }
+
     @Option(names = {"--schema", "-s"}, required = true,
             description = "Path to the .fbs FlatBuffers schema file.")
     private File schema;
@@ -24,17 +28,18 @@ public class DecodeCommand implements Callable<Integer> {
             description = "Path to the CSV export file.")
     private File csv;
 
-    @Option(names = {"--column"}, required = true,
-            description = "Column name(s) containing FlatBuffer blobs.")
+    @Option(names = {"--column"},
+            description = "Column name(s) containing FlatBuffer blobs. "
+                        + "Omit to auto-detect binary columns.")
     private String[] columns;
 
     @Option(names = {"--encoding", "-e"}, defaultValue = "base64",
-            description = "Encoding of binary data in CSV: base64 or hex. Default: ${DEFAULT-VALUE}")
-    private String encoding;
+            description = "Encoding of binary data in CSV: base64, hex, or raw. Default: ${DEFAULT-VALUE}")
+    private Encoding encoding;
 
-    @Option(names = {"--pretty", "-p"},
-            description = "Pretty-print JSON output.")
-    private boolean pretty;
+    @Option(names = {"--format", "-f"}, defaultValue = "pretty",
+            description = "Output format: pretty (default), compact, or ndjson.")
+    private Format format;
 
     @Option(names = {"--output", "-o"},
             description = "Output file path. Default: stdout.")
@@ -46,9 +51,24 @@ public class DecodeCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        // TODO: Phase 1 — wire up CsvReader → FbDecoder → JsonWriter pipeline
-        System.out.println("Decoding " + csv.getName() + " using schema " + schema.getName());
-        System.out.println("Target columns: " + String.join(", ", columns));
+        // TODO: wire up CsvReader → FbDecoder → JsonWriter pipeline
+        System.out.println("Schema:   " + schema.getPath());
+        System.out.println("CSV:      " + csv.getPath());
+        System.out.println("Encoding: " + encoding);
+        System.out.println("Format:   " + format);
+
+        if (columns != null && columns.length > 0) {
+            System.out.println("Columns:  " + String.join(", ", columns));
+        } else {
+            System.out.println("Columns:  auto-detect");
+        }
+
+        if (output != null) {
+            System.out.println("Output:   " + output.getPath());
+        } else {
+            System.out.println("Output:   stdout");
+        }
+
         return 0;
     }
 }
