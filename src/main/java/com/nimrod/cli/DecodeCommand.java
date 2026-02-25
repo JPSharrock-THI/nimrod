@@ -12,7 +12,8 @@ import java.util.concurrent.Callable;
     name = "decode",
     mixinStandardHelpOptions = true,
     version = "nimrod 0.1.0",
-    description = "Decode FlatBuffer-serialised columns from a CSV export to JSON."
+    description = "Decode FlatBuffer-serialised columns from a CSV export to JSON. "
+                + "Schemas are auto-matched via the 4-byte file_identifier in each buffer."
 )
 public class DecodeCommand implements Callable<Integer> {
 
@@ -20,13 +21,14 @@ public class DecodeCommand implements Callable<Integer> {
 
     public enum Format { pretty, compact, ndjson }
 
-    @Option(names = {"--schema", "-s"}, required = true,
-            description = "Path to the .fbs FlatBuffers schema file.")
-    private File schema;
-
     @Option(names = {"--csv", "-c"}, required = true,
             description = "Path to the CSV export file.")
     private File csv;
+
+    @Option(names = {"--schema-dir"},
+            description = "Path to directory of .fbs schema files. "
+                        + "Default: bundled schemas/ submodule.")
+    private File schemaDir;
 
     @Option(names = {"--column"},
             description = "Column name(s) containing FlatBuffer blobs. "
@@ -45,28 +47,24 @@ public class DecodeCommand implements Callable<Integer> {
             description = "Output file path. Default: stdout.")
     private File output;
 
-    @Option(names = {"--root-type"},
-            description = "Root table type in the schema. Auto-detected if the schema has a single root type.")
-    private String rootType;
-
     @Override
     public Integer call() {
-        // TODO: wire up CsvReader → FbDecoder → JsonWriter pipeline
-        System.out.println("Schema:   " + schema.getPath());
-        System.out.println("CSV:      " + csv.getPath());
-        System.out.println("Encoding: " + encoding);
-        System.out.println("Format:   " + format);
+        // TODO: wire up SchemaRegistry → CsvReader → FbDecoder → JsonWriter pipeline
+        System.out.println("CSV:        " + csv.getPath());
+        System.out.println("Schema dir: " + (schemaDir != null ? schemaDir.getPath() : "bundled"));
+        System.out.println("Encoding:   " + encoding);
+        System.out.println("Format:     " + format);
 
         if (columns != null && columns.length > 0) {
-            System.out.println("Columns:  " + String.join(", ", columns));
+            System.out.println("Columns:    " + String.join(", ", columns));
         } else {
-            System.out.println("Columns:  auto-detect");
+            System.out.println("Columns:    auto-detect");
         }
 
         if (output != null) {
-            System.out.println("Output:   " + output.getPath());
+            System.out.println("Output:     " + output.getPath());
         } else {
-            System.out.println("Output:   stdout");
+            System.out.println("Output:     stdout");
         }
 
         return 0;

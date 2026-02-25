@@ -5,8 +5,12 @@
 A Spring Boot console application that decodes FlatBuffer-serialised columns from CSV exports (e.g. from DBeaver/GDB) and outputs them as JSON.
 
 ```
-DBeaver → Export GDB table as CSV → java -jar nimrod.jar decode --schema game.fbs --csv export.csv → JSON
+DBeaver → Export GDB table as CSV → java -jar nimrod.jar decode --csv export.csv → JSON
 ```
+
+Schemas are sourced from a separate Git repo (submodule). The tool reads the 4-byte
+`file_identifier` from each FlatBuffer blob and automatically matches it to the correct
+`.fbs` schema — no manual `--schema` flag needed.
 
 ## Tech Stack
 
@@ -27,6 +31,10 @@ nimrod/
 ├── build.gradle.kts
 ├── settings.gradle.kts
 ├── gradle/wrapper/...
+├── schemas/                              # Git submodule → external .fbs schema repo
+│   ├── research_state.fbs                # file_identifier "FBSR"
+│   ├── army.fbs                          # file_identifier "FBSA"
+│   └── ...
 ├── src/main/
 │   ├── java/com/nimrod/
 │   │   ├── NimrodApplication.java        # @SpringBootApplication (no web)
@@ -35,7 +43,8 @@ nimrod/
 │   │   ├── csv/
 │   │   │   └── CsvReader.java            # Read CSV, extract rows + binary columns
 │   │   ├── flatbuffers/
-│   │   │   └── FbDecoder.java            # Schema-driven reflection decoder
+│   │   │   ├── FbDecoder.java            # Schema-driven reflection decoder
+│   │   │   └── SchemaRegistry.java       # Scans .fbs files, builds file_identifier → schema map
 │   │   └── output/
 │   │       └── JsonWriter.java           # Row maps → JSON (stdout or file)
 │   └── resources/
@@ -47,49 +56,45 @@ nimrod/
 ## CLI Interface
 
 ```bash
-# Minimal — auto-detects binary columns, pretty JSON to stdout
-java -jar nimrod.jar decode \
-    --schema schemas/game_event.fbs \
-    --csv export.csv
+# Simplest — auto-detects columns, auto-matches schema via file_identifier
+java -jar nimrod.jar decode --csv export.csv
 
 # Explicit column targeting
-java -jar nimrod.jar decode \
-    --schema schemas/game_event.fbs \
-    --csv export.csv \
-    --column payload
+java -jar nimrod.jar decode --csv export.csv --column payload
+
+# Override schema directory (default: bundled submodule)
+java -jar nimrod.jar decode --csv export.csv --schema-dir /path/to/schemas
+
+# List all known schemas and their file_identifiers
+java -jar nimrod.jar schemas
 
 # Compact JSON to a file
-java -jar nimrod.jar decode \
-    --schema schemas/game_event.fbs \
-    --csv export.csv \
-    --format compact \
-    --output decoded.json
+java -jar nimrod.jar decode --csv export.csv --format compact --output decoded.json
 
-# NDJSON (one JSON object per line) — useful for piping
-java -jar nimrod.jar decode \
-    --schema schemas/game_event.fbs \
-    --csv export.csv \
-    --format ndjson | jq '.payload'
+# NDJSON piped to jq
+java -jar nimrod.jar decode --csv export.csv --format ndjson | jq '.payload'
 ```
 
 ### Arguments
 
-| Argument       | Required | Default  | Description                                                                 |
-|----------------|----------|----------|-----------------------------------------------------------------------------|
-| `--schema`     | Yes      | —        | Path to `.fbs` FlatBuffers schema file                                      |
-| `--csv`        | Yes      | —        | Path to CSV export file                                                     |
-| `--column`     | No       | auto     | Column name(s) containing FlatBuffer blobs. Omit to auto-detect binary data |
-| `--encoding`   | No       | base64   | Encoding of binary data in CSV: `base64`, `hex`, or `raw`                   |
-| `--format`     | No       | pretty   | Output format: `pretty` (default), `compact`, or `ndjson`                   |
-| `--output`     | No       | stdout   | Output file path (default: print to console)                                |
-| `--root-type`  | No       | auto     | Root table type in schema (auto-detect if single root)                      |
+| Argument       | Required | Default           | Description                                                                 |
+|----------------|----------|-------------------|-----------------------------------------------------------------------------|
+| `--csv`        | Yes      | —                 | Path to CSV export file                                                     |
+| `--schema-dir` | No       | bundled schemas/  | Path to directory of `.fbs` files (overrides the bundled submodule)          |
+| `--column`     | No       | auto              | Column name(s) containing FlatBuffer blobs. Omit to auto-detect binary data |
+| `--encoding`   | No       | base64            | Encoding of binary data in CSV: `base64`, `hex`, or `raw`                   |
+| `--format`     | No       | pretty            | Output format: `pretty` (default), `compact`, or `ndjson`                   |
+| `--output`     | No       | stdout            | Output file path (default: print to console)                                |
 
 ## Implementation Phases
 
-### Phase 1 — Project Skeleton
+### Phase 1 — Project Skeleton & Schema Registry
 - Spring Boot console app, Gradle build, fat JAR
-- Picocli wired up with `decode` subcommand
+- Picocli wired up with `decode` and `schemas` subcommands
 - Arg parsing and validation
+- Git submodule for external `.fbs` schema repo
+- `SchemaRegistry`: scan all `.fbs` files, parse `file_identifier` directives,
+  build a `Map<String, SchemaEntry>` keyed by 4-byte identifier
 
 ### Phase 2 — CSV Ingestion
 - Read CSV with Apache Commons CSV
@@ -99,7 +104,9 @@ java -jar nimrod.jar decode \
 - Pass through non-binary columns as-is
 
 ### Phase 3 — FlatBuffer Decoding
-- Parse `.fbs` schema file at runtime
+- Read bytes 4–7 from buffer to extract the `file_identifier`
+- Look up the identifier in `SchemaRegistry` → get the matching `.fbs` schema
+- If no match: error with a list of all known identifiers and their schema files
 - Use FlatBuffers reflection API to walk the binary buffer
 - Produce `Map<String, Object>` per decoded buffer
 - Handle nested tables, vectors, unions, enums
@@ -118,9 +125,20 @@ java -jar nimrod.jar decode \
 
 ## Design Decisions (finalised)
 
-### 1. Schema handling → Runtime reflection
+### 1. Schema handling → Auto-detection via file_identifier
+Schemas live in a separate Git repo, pulled in as a submodule under `schemas/`.
+At startup, `SchemaRegistry` scans all `.fbs` files and extracts their `file_identifier`
+(e.g. `"FBSR"`) to build a lookup map.
+
+When decoding, the tool reads the 4-byte identifier from each FlatBuffer blob (bytes 4–7)
+and automatically selects the correct schema. No `--schema` flag needed.
+
+If the identifier is unknown, the tool errors with a clear message listing all available
+schemas and their identifiers.
+
 We use FlatBuffers reflection/schema parsing rather than compiled Java classes.
 - One JAR works with any `.fbs` schema — no rebuild needed per game/table
+- `--schema-dir` override lets users point at a local checkout if needed
 - If reflection proves too painful, fallback option is requiring codegen + classpath of generated classes
 
 ### 2. Column detection → Explicit flag with auto-detect fallback
