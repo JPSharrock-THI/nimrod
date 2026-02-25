@@ -13,10 +13,6 @@ java {
     }
 }
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
     // Spring Boot (no web)
     implementation("org.springframework.boot:spring-boot-starter")
