@@ -1,0 +1,77 @@
+name: Release Native Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  native-image:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: nimrod-linux-x64
+          - os: macos-13
+            artifact: nimrod-macos-x64
+          - os: macos-latest
+            artifact: nimrod-macos-arm64
+          - os: windows-latest
+            artifact: nimrod-windows-x64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '21'
+          distribution: 'graalvm-community'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build native image
+        run: ./gradlew nativeCompile
+        env:
+          ORG_GRADLE_PROJECT_bytroNexusUser: ${{ secrets.BYTRO_NEXUS_USER }}
+          ORG_GRADLE_PROJECT_bytroNexusPass: ${{ secrets.BYTRO_NEXUS_PASS }}
+
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd build/native/nativeCompile
+          tar -czf ${{ matrix.artifact }}.tar.gz nimrod
+          mv ${{ matrix.artifact }}.tar.gz ../../../
+
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd build/native/nativeCompile
+          Compress-Archive -Path nimrod.exe -DestinationPath ${{ matrix.artifact }}.zip
+          Move-Item ${{ matrix.artifact }}.zip ../../../
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip
+
+  release:
+    needs: native-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/**/*
