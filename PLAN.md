@@ -4,7 +4,7 @@
 
 A CLI tool that decodes FlatBuffer-serialised columns from CSV exports (e.g. from
 DBeaver/GDB) and outputs them as JSON. Distributed as a **GraalVM native image** for
-instant startup (~10ms), with a future migration path to Rust.
+instant startup (~10ms).
 
 ```
 DBeaver → Export GDB table as CSV → nimrod decode --csv export.csv → JSON
@@ -128,7 +128,7 @@ java -jar nimrod.jar decode --csv export.csv
 - Configure `reflect-config.json` or use GraalVM reachability metadata
 - `./gradlew nativeCompile` → produces `nimrod` binary
 - Test that the native binary works identically to the fat JAR
-- CI: build native images for macOS arm64, macOS x64, Linux x64
+- CI: build native images for macOS arm64, macOS x64, Linux x64, Windows x64
 
 ### Phase 6 — Polish
 - Error handling and user-friendly messages
@@ -202,26 +202,6 @@ or maintained as a static resource.
 **Fat JAR remains available** as a fallback for environments where a native binary
 isn't practical (e.g. running from CI, unsupported platforms).
 
-### 7. Future → Rust migration path
-The `.fbs` schema files are the source of truth, not the Java classes.
-`flatc` is a multi-target compiler:
-
-```
-                    ┌─ flatc --java ──→ .java ──→ sup-server-db-fbs-schema.jar
-schema.fbs ─────────┤
-                    └─ flatc --rust ──→ .rs   ──→ nimrod binary
-```
-
-This is a proven pattern at Bytro — the CON seasonal point system already
-consumes the same FlatBuffer schemas from Rust via `flatc --rust`.
-
-If the Java + GraalVM approach proves too heavy (build complexity, reflection
-config maintenance, platform matrix), the tool can be rewritten in Rust with:
-- `flatc --rust` on the same `.fbs` files (build.rs step)
-- `clap` for CLI parsing (equivalent to Picocli)
-- `csv` crate + `serde_json` for CSV→JSON
-- Single static binary, cross-compile via `cargo build --target`
-- No reflection, no GraalVM config, no JVM
 
 ## Example Output
 
