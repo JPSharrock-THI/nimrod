@@ -1,6 +1,6 @@
 package com.nimrod.csv;
 
-import com.nimrod.cli.DecodeCommand.Encoding;
+import com.nimrod.cli.NimrodCommand.Encoding;
 
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;

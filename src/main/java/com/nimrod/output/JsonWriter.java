@@ -3,7 +3,7 @@ package com.nimrod.output;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.nimrod.cli.DecodeCommand.Format;
+import com.nimrod.cli.NimrodCommand.Format;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
