@@ -42,6 +42,12 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+// The GraalVM collectReachabilityMetadata and Spring AOT both produce files at
+// META-INF/native-image/com.nimrod/nimrod/ — keep the first copy encountered.
+tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 springBoot {
     mainClass = "com.nimrod.NimrodApplication"
 }
