@@ -1,10 +1,23 @@
 package com.nimrod.cli;
 
+import com.nimrod.csv.CsvReader;
+import com.nimrod.csv.CsvReader.CsvRow;
+import com.nimrod.flatbuffers.FbDecoder;
+import com.nimrod.output.JsonWriter;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import java.io.File;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 @Component
@@ -17,6 +30,8 @@ import java.util.concurrent.Callable;
 )
 public class DecodeCommand implements Callable<Integer> {
 
+    private static final Logger LOG = LoggerFactory.getLogger(DecodeCommand.class);
+
     public enum Encoding { base64, hex, raw }
 
     public enum Format { pretty, compact, ndjson }
@@ -24,11 +39,6 @@ public class DecodeCommand implements Callable<Integer> {
     @Option(names = {"--csv", "-c"}, required = true,
             description = "Path to the CSV export file.")
     private File csv;
-
-    @Option(names = {"--schema-dir"},
-            description = "Path to directory of .fbs schema files. "
-                        + "Default: bundled schemas/ submodule.")
-    private File schemaDir;
 
     @Option(names = {"--column"},
             description = "Column name(s) containing FlatBuffer blobs. "
@@ -47,26 +57,67 @@ public class DecodeCommand implements Callable<Integer> {
             description = "Output file path. Default: stdout.")
     private File output;
 
+    private final CsvReader csvReader;
+    private final FbDecoder fbDecoder;
+    private final JsonWriter jsonWriter;
+
+    public DecodeCommand(CsvReader csvReader, FbDecoder fbDecoder, JsonWriter jsonWriter) {
+        this.csvReader = csvReader;
+        this.fbDecoder = fbDecoder;
+        this.jsonWriter = jsonWriter;
+    }
+
     @Override
     public Integer call() {
-        // TODO: wire up SchemaRegistry → CsvReader → FbDecoder → JsonWriter pipeline
-        System.out.println("CSV:        " + csv.getPath());
-        System.out.println("Schema dir: " + (schemaDir != null ? schemaDir.getPath() : "bundled"));
-        System.out.println("Encoding:   " + encoding);
-        System.out.println("Format:     " + format);
-
-        if (columns != null && columns.length > 0) {
-            System.out.println("Columns:    " + String.join(", ", columns));
-        } else {
-            System.out.println("Columns:    auto-detect");
+        if (!csv.exists()) {
+            System.err.println("Error: CSV file not found: " + csv.getPath());
+            return 1;
         }
 
-        if (output != null) {
-            System.out.println("Output:     " + output.getPath());
-        } else {
-            System.out.println("Output:     stdout");
-        }
+        try {
+            // 1. Read CSV
+            List<CsvRow> csvRows = csvReader.read(csv, columns, encoding);
+            if (csvRows.isEmpty()) {
+                System.err.println("No rows found in CSV.");
+                return 0;
+            }
 
-        return 0;
+            // 2. Decode FlatBuffer columns
+            List<Map<String, Object>> decodedRows = new ArrayList<>();
+            int errorCount = 0;
+
+            for (int i = 0; i < csvRows.size(); i++) {
+                CsvRow row = csvRows.get(i);
+                Map<String, Object> decodedRow = new LinkedHashMap<>(row.stringColumns());
+
+                for (Map.Entry<String, ByteBuffer> entry : row.binaryColumns().entrySet()) {
+                    try {
+                        Map<String, Object> decoded = fbDecoder.decode(entry.getValue());
+                        decodedRow.put(entry.getKey(), decoded);
+                    } catch (Exception e) {
+                        LOG.warn("Row {}: failed to decode column '{}': {}",
+                                i + 1, entry.getKey(), e.getMessage());
+                        decodedRow.put(entry.getKey(), "<decode error: " + e.getMessage() + ">");
+                        errorCount++;
+                    }
+                }
+
+                decodedRows.add(decodedRow);
+            }
+
+            // 3. Write JSON output
+            jsonWriter.write(decodedRows, format, output);
+
+            if (errorCount > 0) {
+                System.err.printf("%d decode error(s) encountered. See log for details.%n", errorCount);
+            }
+
+            return 0;
+
+        } catch (Exception e) {
+            System.err.println("Error: " + e.getMessage());
+            LOG.error("Decode failed", e);
+            return 1;
+        }
     }
 }

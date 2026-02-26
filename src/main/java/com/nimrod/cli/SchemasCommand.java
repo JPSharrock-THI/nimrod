@@ -1,32 +1,30 @@
 package com.nimrod.cli;
 
-import org.springframework.stereotype.Component;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Option;
+import com.nimrod.flatbuffers.SchemaRegistry;
 
-import java.io.File;
+import org.springframework.stereotype.Component;
+
+import picocli.CommandLine.Command;
+
 import java.util.concurrent.Callable;
 
 @Component
 @Command(
     name = "schemas",
     mixinStandardHelpOptions = true,
-    description = "List all known FlatBuffer schemas and their file_identifiers."
+    description = "List all known FlatBuffer schemas from the sup-server-db-fbs-schema artifact."
 )
 public class SchemasCommand implements Callable<Integer> {
 
-    @Option(names = {"--schema-dir"},
-            description = "Path to directory of .fbs schema files. "
-                        + "Default: bundled schemas/ submodule.")
-    private File schemaDir;
+    private final SchemaRegistry schemaRegistry;
+
+    public SchemasCommand(SchemaRegistry schemaRegistry) {
+        this.schemaRegistry = schemaRegistry;
+    }
 
     @Override
     public Integer call() {
-        // TODO: load SchemaRegistry, print formatted table
-        // Identifier | Root Type         | Schema File
-        // FBSR       | FbsDbResearchState | research_state.fbs
-        // FBSA       | FbsDbArmy          | army.fbs
-        System.out.println("Listing schemas from: " + (schemaDir != null ? schemaDir.getPath() : "bundled"));
+        System.out.println(schemaRegistry.formatSchemaList());
         return 0;
     }
 }
