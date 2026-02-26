@@ -8,9 +8,11 @@ A Spring Boot console application that decodes FlatBuffer-serialised columns fro
 DBeaver → Export GDB table as CSV → java -jar nimrod.jar decode --csv export.csv → JSON
 ```
 
-Schemas are sourced from a separate Git repo (submodule). The tool reads the 4-byte
+Schemas are sourced from the `sup-server-db-fbs-schema` Maven artifact
+(`com.bytro.sup:sup-server-db-fbs-schema:0.2.17`), which provides pre-compiled
+FlatBuffer Java classes under `com.bytro.sup.fbs.db.*`. The tool reads the 4-byte
 `file_identifier` from each FlatBuffer blob and automatically matches it to the correct
-`.fbs` schema — no manual `--schema` flag needed.
+deserializer — no manual `--schema` flag needed.
 
 ## Tech Stack
 
@@ -21,7 +23,8 @@ Schemas are sourced from a separate Git repo (submodule). The tool reads the 4-b
 | Build            | Gradle (Kotlin DSL)             | Fat JAR packaging via Spring Boot plugin           |
 | CLI parsing      | Picocli + spring-boot starter   | Rich CLI UX: subcommands, help text, validation   |
 | CSV              | Apache Commons CSV               | Battle-tested, handles edge cases                 |
-| FlatBuffers      | google/flatbuffers Java library | Reflection-based decoding (no codegen per schema) |
+| FlatBuffers      | google/flatbuffers Java library | Runtime FlatBuffer support                        |
+| FBS Schemas      | sup-server-db-fbs-schema 0.2.17 | Pre-compiled Java classes from Bytro Nexus        |
 | JSON output      | Jackson                          | Already bundled with Spring Boot                  |
 
 ## Module Structure
@@ -31,10 +34,6 @@ nimrod/
 ├── build.gradle.kts
 ├── settings.gradle.kts
 ├── gradle/wrapper/...
-├── schemas/                              # Git submodule → external .fbs schema repo
-│   ├── research_state.fbs                # file_identifier "FBSR"
-│   ├── army.fbs                          # file_identifier "FBSA"
-│   └── ...
 ├── src/main/
 │   ├── java/com/nimrod/
 │   │   ├── NimrodApplication.java        # @SpringBootApplication (no web)
@@ -43,8 +42,8 @@ nimrod/
 │   │   ├── csv/
 │   │   │   └── CsvReader.java            # Read CSV, extract rows + binary columns
 │   │   ├── flatbuffers/
-│   │   │   ├── FbDecoder.java            # Schema-driven reflection decoder
-│   │   │   └── SchemaRegistry.java       # Scans .fbs files, builds file_identifier → schema map
+│   │   │   ├── FbDecoder.java            # Decodes FlatBuffer blobs using compiled schema classes
+│   │   │   └── SchemaRegistry.java       # Maps file_identifier → root type deserializer
 │   │   └── output/
 │   │       └── JsonWriter.java           # Row maps → JSON (stdout or file)
 │   └── resources/
@@ -62,9 +61,6 @@ java -jar nimrod.jar decode --csv export.csv
 # Explicit column targeting
 java -jar nimrod.jar decode --csv export.csv --column payload
 
-# Override schema directory (default: bundled submodule)
-java -jar nimrod.jar decode --csv export.csv --schema-dir /path/to/schemas
-
 # List all known schemas and their file_identifiers
 java -jar nimrod.jar schemas
 
@@ -80,7 +76,6 @@ java -jar nimrod.jar decode --csv export.csv --format ndjson | jq '.payload'
 | Argument       | Required | Default           | Description                                                                 |
 |----------------|----------|-------------------|-----------------------------------------------------------------------------|
 | `--csv`        | Yes      | —                 | Path to CSV export file                                                     |
-| `--schema-dir` | No       | bundled schemas/  | Path to directory of `.fbs` files (overrides the bundled submodule)          |
 | `--column`     | No       | auto              | Column name(s) containing FlatBuffer blobs. Omit to auto-detect binary data |
 | `--encoding`   | No       | base64            | Encoding of binary data in CSV: `base64`, `hex`, or `raw`                   |
 | `--format`     | No       | pretty            | Output format: `pretty` (default), `compact`, or `ndjson`                   |
@@ -92,9 +87,9 @@ java -jar nimrod.jar decode --csv export.csv --format ndjson | jq '.payload'
 - Spring Boot console app, Gradle build, fat JAR
 - Picocli wired up with `decode` and `schemas` subcommands
 - Arg parsing and validation
-- Git submodule for external `.fbs` schema repo
-- `SchemaRegistry`: scan all `.fbs` files, parse `file_identifier` directives,
-  build a `Map<String, SchemaEntry>` keyed by 4-byte identifier
+- `sup-server-db-fbs-schema` Maven dependency from Bytro Nexus (compiled FlatBuffer classes)
+- `SchemaRegistry`: register all known FlatBuffer root types from the schema artifact,
+  build a `Map<String, SchemaEntry>` keyed by 4-byte file_identifier
 
 ### Phase 2 — CSV Ingestion
 - Read CSV with Apache Commons CSV
@@ -105,9 +100,10 @@ java -jar nimrod.jar decode --csv export.csv --format ndjson | jq '.payload'
 
 ### Phase 3 — FlatBuffer Decoding
 - Read bytes 4–7 from buffer to extract the `file_identifier`
-- Look up the identifier in `SchemaRegistry` → get the matching `.fbs` schema
-- If no match: error with a list of all known identifiers and their schema files
-- Use FlatBuffers reflection API to walk the binary buffer
+- Look up the identifier in `SchemaRegistry` → get the matching deserializer
+- If no match: error with a list of all known identifiers and their schema types
+- Use the compiled FlatBuffer Java classes (e.g. `FbsDbArmy.getRootAsFbsDbArmy(buffer)`)
+  to deserialize, following the same patterns as sup-server's serde layer
 - Produce `Map<String, Object>` per decoded buffer
 - Handle nested tables, vectors, unions, enums
 
@@ -125,21 +121,26 @@ java -jar nimrod.jar decode --csv export.csv --format ndjson | jq '.payload'
 
 ## Design Decisions (finalised)
 
-### 1. Schema handling → Auto-detection via file_identifier
-Schemas live in a separate Git repo, pulled in as a submodule under `schemas/`.
-At startup, `SchemaRegistry` scans all `.fbs` files and extracts their `file_identifier`
-(e.g. `"FBSR"`) to build a lookup map.
+### 1. Schema handling → Compiled classes + auto-detection via file_identifier
+Schemas come from the `sup-server-db-fbs-schema` Maven artifact
+(`com.bytro.sup:sup-server-db-fbs-schema:0.2.17`), published to Bytro Nexus. This
+artifact contains pre-compiled FlatBuffer Java classes under `com.bytro.sup.fbs.db.*`
+(e.g. `FbsDbArmy`, `FbsDbPoint`, `FbsDbTradeState`).
+
+At startup, `SchemaRegistry` registers all known root types and their 4-byte
+`file_identifier` values (e.g. `"FBSA"` → `FbsDbArmy`) to build a lookup map.
 
 When decoding, the tool reads the 4-byte identifier from each FlatBuffer blob (bytes 4–7)
-and automatically selects the correct schema. No `--schema` flag needed.
+and automatically selects the correct deserializer. No manual schema flag needed.
 
 If the identifier is unknown, the tool errors with a clear message listing all available
 schemas and their identifiers.
 
-We use FlatBuffers reflection/schema parsing rather than compiled Java classes.
-- One JAR works with any `.fbs` schema — no rebuild needed per game/table
-- `--schema-dir` override lets users point at a local checkout if needed
-- If reflection proves too painful, fallback option is requiring codegen + classpath of generated classes
+We use the compiled Java classes rather than raw `.fbs` reflection:
+- Matches exactly how sup-server's serde layer works (proven, production-tested)
+- Strongly typed — compile-time safety for field access
+- No need for a `flatc` compiler at runtime or raw `.fbs` files on disk
+- To support new schemas, bump the `sup-server-db-fbs-schema` version
 
 ### 2. Column detection → Explicit flag with auto-detect fallback
 - When `--column` is provided: decode only those named columns
