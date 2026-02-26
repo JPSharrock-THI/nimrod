@@ -41,7 +41,7 @@ public class NimrodCommand implements Callable<Integer>, CommandLineRunner, Exit
 
     public enum Format { pretty, compact, ndjson }
 
-    @Option(names = {"--csv", "-c"}, required = true,
+    @Option(names = {"--csv", "-c"},
             description = "Path to the CSV export file.")
     private File csv;
 
@@ -82,6 +82,10 @@ public class NimrodCommand implements Callable<Integer>, CommandLineRunner, Exit
 
     @Override
     public Integer call() {
+        if (csv == null) {
+            new CommandLine(this).usage(System.out);
+            return 0;
+        }
         if (!csv.exists()) {
             System.err.println("Error: CSV file not found: " + csv.getPath());
             return 1;
