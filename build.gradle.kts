@@ -13,10 +13,6 @@ java {
     }
 }
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
     // Spring Boot (no web)
     implementation("org.springframework.boot:spring-boot-starter")
@@ -29,6 +25,10 @@ dependencies {
 
     // FlatBuffers
     implementation("com.google.flatbuffers:flatbuffers-java:24.12.23")
+
+    // FlatBuffers DB schemas (generated Java classes for decoding game state)
+    // Published from the sup-server-db-fbs-schema project to Bytro Nexus
+    implementation("com.bytro.sup:sup-server-db-fbs-schema:0.2.17")
 
     // Jackson (JSON output)
     implementation("com.fasterxml.jackson.core:jackson-databind")
