@@ -36,6 +36,26 @@ public class JsonWriter {
     }
 
     /**
+     * Write a single decoded object as JSON (no array wrapper).
+     */
+    public void writeSingle(Map<String, Object> row, Format format, File output)
+            throws IOException {
+
+        try (OutputStream os = output != null
+                ? new FileOutputStream(output)
+                : new NonClosingOutputStream(System.out);
+             PrintStream ps = new PrintStream(os)) {
+
+            ObjectMapper mapper = (format == Format.pretty) ? prettyMapper : compactMapper;
+            ps.println(mapper.writeValueAsString(row));
+        }
+
+        if (output != null) {
+            LOG.info("Wrote to {}", output.getPath());
+        }
+    }
+
+    /**
      * Write the decoded rows as JSON.
      *
      * @param rows   list of decoded row maps
