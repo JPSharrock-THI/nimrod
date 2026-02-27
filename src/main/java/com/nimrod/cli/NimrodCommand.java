@@ -98,10 +98,16 @@ public class NimrodCommand implements Callable<Integer>, CommandLineRunner, Exit
                 return 0;
             }
 
+            int totalRows = csvRows.size();
+            boolean showProgress = totalRows >= 100;
+            if (showProgress) {
+                System.err.printf("Decoding %,d rows...%n", totalRows);
+            }
+
             List<Map<String, Object>> decodedRows = new ArrayList<>();
             int errorCount = 0;
 
-            for (int i = 0; i < csvRows.size(); i++) {
+            for (int i = 0; i < totalRows; i++) {
                 CsvRow row = csvRows.get(i);
                 Map<String, Object> decodedRow = new LinkedHashMap<>(row.stringColumns());
 
@@ -118,6 +124,14 @@ public class NimrodCommand implements Callable<Integer>, CommandLineRunner, Exit
                 }
 
                 decodedRows.add(decodedRow);
+
+                if (showProgress && (i + 1) % 1000 == 0) {
+                    System.err.printf("  %,d / %,d rows decoded...%n", i + 1, totalRows);
+                }
+            }
+
+            if (showProgress) {
+                System.err.printf("  %,d / %,d rows decoded.%n", totalRows, totalRows);
             }
 
             jsonWriter.write(decodedRows, format, output);
@@ -128,6 +142,13 @@ public class NimrodCommand implements Callable<Integer>, CommandLineRunner, Exit
 
             return 0;
 
+        } catch (java.io.FileNotFoundException e) {
+            System.err.println("Error: could not open output file: " + e.getMessage());
+            return 1;
+        } catch (java.io.IOException e) {
+            System.err.println("Error reading CSV: " + e.getMessage());
+            LOG.error("CSV read failed", e);
+            return 1;
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
             LOG.error("Decode failed", e);

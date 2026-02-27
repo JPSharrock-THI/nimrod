@@ -65,11 +65,27 @@ public class CsvReader {
                      .parse(reader)) {
 
             List<String> headers = parser.getHeaderNames();
+            if (headers.isEmpty()) {
+                LOG.warn("CSV file has no headers");
+                return rows;
+            }
             LOG.info("CSV headers: {}", headers);
 
             // Determine which columns to treat as binary
             List<String> binaryColumnNames;
             if (targetColumns != null && targetColumns.length > 0) {
+                // Validate that requested columns exist
+                List<String> missing = new ArrayList<>();
+                for (String col : targetColumns) {
+                    if (!headers.contains(col)) {
+                        missing.add(col);
+                    }
+                }
+                if (!missing.isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "Column(s) not found in CSV: " + missing
+                                    + ". Available columns: " + headers);
+                }
                 binaryColumnNames = List.of(targetColumns);
                 LOG.info("Targeting columns: {}", binaryColumnNames);
             } else {
@@ -82,7 +98,12 @@ public class CsvReader {
                 // Auto-detect on first row if no explicit columns
                 if (firstRow && binaryColumnNames.isEmpty()) {
                     binaryColumnNames = autoDetectBinaryColumns(record, headers, encoding);
-                    LOG.info("Auto-detected binary columns: {}", binaryColumnNames);
+                    if (binaryColumnNames.isEmpty()) {
+                        LOG.warn("No binary columns detected. "
+                                + "Try specifying --column explicitly or check --encoding.");
+                    } else {
+                        LOG.info("Auto-detected binary columns: {}", binaryColumnNames);
+                    }
                     firstRow = false;
                 }
 

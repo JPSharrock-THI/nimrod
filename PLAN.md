@@ -3,8 +3,7 @@
 ## Overview
 
 A CLI tool that decodes FlatBuffer-serialised columns from CSV exports (e.g. from
-DBeaver/GDB) and outputs them as JSON. Distributed as a **GraalVM native image** for
-instant startup (~10ms).
+DBeaver/GDB) and outputs them as JSON. Distributed as a Spring Boot fat JAR.
 
 ```
 DBeaver → Export GDB table as CSV → nimrod decode --csv export.csv → JSON
@@ -22,8 +21,7 @@ deserializer — no manual `--schema` flag needed.
 |------------------|---------------------------------|---------------------------------------------------|
 | Language         | Java 21                         | LTS, mature FlatBuffers support                   |
 | Framework        | Spring Boot 3.x (no web)       | Familiar, easy DI, `CommandLineRunner`            |
-| Build            | Gradle (Kotlin DSL)             | Fat JAR + GraalVM native image                    |
-| Native image     | GraalVM + native-build-tools    | AOT compilation → single binary, ~10ms startup    |
+| Build            | Gradle (Kotlin DSL)             | Fat JAR via bootJar                               |
 | CLI parsing      | Picocli + spring-boot starter   | Rich CLI UX: subcommands, help text, validation   |
 | CSV              | Apache Commons CSV               | Battle-tested, handles edge cases                 |
 | FlatBuffers      | google/flatbuffers Java library | Runtime FlatBuffer support                        |
@@ -50,9 +48,7 @@ nimrod/
 │   │   └── output/
 │   │       └── JsonWriter.java           # Row maps → JSON (stdout or file)
 │   └── resources/
-│       ├── application.properties        # spring.main.web-application-type=none
-│       └── META-INF/native-image/
-│           └── reflect-config.json       # GraalVM reflection hints for FBS classes
+│       └── application.properties        # spring.main.web-application-type=none
 └── src/test/java/com/nimrod/
     └── ...                               # Unit tests
 ```
@@ -121,19 +117,11 @@ java -jar nimrod.jar decode --csv export.csv
 - Pretty JSON (default), compact JSON, NDJSON modes via `--format`
 - Write to stdout or file via `--output`
 
-### Phase 5 — GraalVM Native Image
-- Add `org.graalvm.buildtools.native` Gradle plugin
-- Generate reflection metadata for all 22 FBS root classes (needed because
-  `SchemaRegistry` uses `Class.forName` and `Method.invoke` at runtime)
-- Configure `reflect-config.json` or use GraalVM reachability metadata
-- `./gradlew nativeCompile` → produces `nimrod` binary
-- Test that the native binary works identically to the fat JAR
-- CI: build native images for macOS arm64, macOS x64, Linux x64, Windows x64
-
-### Phase 6 — Polish
+### Phase 5 — Polish ✅
 - Error handling and user-friendly messages
-- Progress indicator for large CSVs
-- Unit and integration tests
+- Column validation with helpful error messages
+- Progress indicator for large CSVs (≥100 rows)
+- Unit and integration tests (CsvReader, JsonWriter, SchemaRegistry, FbDecoder)
 - README with usage examples
 
 ## Design Decisions (finalised)
@@ -181,26 +169,14 @@ We use the compiled Java classes rather than raw `.fbs` reflection:
 - DI makes testing easy
 - Picocli integration via `picocli-spring-boot-starter` is seamless
 - `spring.main.web-application-type=none` keeps it lightweight
-- Spring Boot 3.x has first-class GraalVM native image support
 
-### 6. Distribution → GraalVM native image (primary), fat JAR (fallback)
-The tool is distributed as a **GraalVM native image** — a single platform-specific
-binary with no JVM dependency. This gives ~10ms startup time, making it feel like
-a native CLI tool.
+### 6. Distribution → Fat JAR
+The tool is distributed as a Spring Boot fat JAR via `./gradlew bootJar`.
 
 ```
-./gradlew nativeCompile      → build/native/nativeCompile/nimrod
-./gradlew bootJar            → build/libs/nimrod.jar (fallback)
+./gradlew bootJar            → build/libs/nimrod-0.1.0-SNAPSHOT.jar
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar --csv export.csv
 ```
-
-**Reflection and native image:** `SchemaRegistry` uses `Class.forName()` and
-`Method.invoke()` to dynamically load FBS classes. GraalVM needs these declared
-at build time via `reflect-config.json`. Since the 22 root classes are enumerated
-in `SchemaRegistry.ROOT_CLASS_NAMES`, the config can be generated automatically
-or maintained as a static resource.
-
-**Fat JAR remains available** as a fallback for environments where a native binary
-isn't practical (e.g. running from CI, unsupported platforms).
 
 
 ## Example Output
