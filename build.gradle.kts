@@ -62,6 +62,11 @@ graalvmNative {
                 "--no-fallback",
                 "-H:+ReportExceptionStackTraces"
             )
+
+            javaLauncher = javaToolchains.launcherFor {
+                languageVersion = JavaLanguageVersion.of(21)
+                vendor = JvmVendorSpec.matching("GraalVM Community")
+            }
         }
     }
 
