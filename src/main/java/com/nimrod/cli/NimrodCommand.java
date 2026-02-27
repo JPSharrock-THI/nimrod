@@ -19,6 +19,7 @@ import picocli.CommandLine.Option;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -108,17 +109,21 @@ public class NimrodCommand implements Callable<Integer>, CommandLineRunner, Exit
 
             for (int i = 0; i < totalRows; i++) {
                 CsvRow row = csvRows.get(i);
+                Map<String, Object> decodedRow = new LinkedHashMap<>(row.stringColumns());
 
                 for (Map.Entry<String, ByteBuffer> entry : row.binaryColumns().entrySet()) {
                     try {
                         Map<String, Object> decoded = fbDecoder.decode(entry.getValue());
-                        decodedRows.add(decoded);
+                        decodedRow.put(entry.getKey(), decoded);
                     } catch (Exception e) {
                         LOG.warn("Row {}: failed to decode column '{}': {}",
                                 i + 1, entry.getKey(), e.getMessage());
+                        decodedRow.put(entry.getKey(), "<decode error: " + e.getMessage() + ">");
                         errorCount++;
                     }
                 }
+
+                decodedRows.add(decodedRow);
 
                 if (showProgress && (i + 1) % 1000 == 0) {
                     System.err.printf("  %,d / %,d rows decoded...%n", i + 1, totalRows);
