@@ -31,7 +31,7 @@ import java.util.concurrent.Callable;
     version = "nimrod 0.1.0",
     description = "Decode FlatBuffer-serialised columns from a CSV export to JSON. "
                 + "Schemas are auto-matched via the 4-byte file_identifier in each buffer.",
-    subcommands = {SchemasCommand.class}
+    subcommands = {DecodeCommand.class, SchemasCommand.class}
 )
 public class NimrodCommand implements Callable<Integer>, CommandLineRunner, ExitCodeGenerator {
 
