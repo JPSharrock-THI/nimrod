@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 
 @Component
@@ -75,9 +76,37 @@ public class NimrodCommand implements Callable<Integer>, CommandLineRunner, Exit
         this.jsonWriter = jsonWriter;
     }
 
+    private static final Set<String> SUBCOMMANDS = Set.of("decode", "schemas");
+
     @Override
     public void run(String... args) {
-        exitCode = new CommandLine(this, factory).execute(args);
+        CommandLine cmd = new CommandLine(this, factory);
+        if (shouldDefaultToDecode(args)) {
+            String[] newArgs = new String[args.length + 1];
+            newArgs[0] = "decode";
+            System.arraycopy(args, 0, newArgs, 1, args.length);
+            exitCode = cmd.execute(newArgs);
+        } else {
+            exitCode = cmd.execute(args);
+        }
+    }
+
+    /**
+     * Detect when the user passes a raw value without the "decode" subcommand,
+     * e.g. {@code nimrod "0xABC..." -e hex} instead of {@code nimrod decode "0xABC..." -e hex}.
+     */
+    private static boolean shouldDefaultToDecode(String[] args) {
+        if (args.length == 0) return false;
+
+        boolean hasPositionalValue = false;
+        for (String arg : args) {
+            if (SUBCOMMANDS.contains(arg)) return false;
+            if ("--csv".equals(arg) || "-c".equals(arg)) return false;
+            if ("--help".equals(arg) || "-h".equals(arg)) return false;
+            if ("--version".equals(arg) || "-V".equals(arg)) return false;
+            if (!arg.startsWith("-")) hasPositionalValue = true;
+        }
+        return hasPositionalValue;
     }
 
     @Override
