@@ -1,10 +1,14 @@
 # Nimrod — FlatBuffers CSV Decoder CLI
 
-Decode FlatBuffer-serialised columns from CSV exports (e.g. from DBeaver) and
-output them as human-readable JSON.
+Decode FlatBuffer-serialised binary data as human-readable JSON. Works with
+single values copied from the DB or bulk CSV exports from DBeaver.
 
 ```
-DBeaver → Export table as CSV → nimrod --csv export.csv → JSON
+# Single value — just paste it
+nimrod "0xABC123..." -e hex
+
+# Bulk CSV export
+nimrod --csv export.csv
 ```
 
 Schemas are sourced from `com.bytro.sup:sup-server-db-fbs-schema`. The tool
@@ -17,7 +21,16 @@ matches it to the correct deserializer — no manual `--schema` flag needed.
 # Build the fat JAR
 ./gradlew bootJar
 
-# Run via the JAR
+# Decode a single value (hex from DB)
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar "0xABC123..." -e hex
+
+# Decode a single value (base64 — default encoding)
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar "RAAAAEZC..."
+
+# Pipe from stdin
+echo "RAAAAEZC..." | java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar decode
+
+# Bulk decode a CSV export
 java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar --csv export.csv
 
 # List all known FlatBuffer schemas
@@ -25,6 +38,29 @@ java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar schemas
 ```
 
 ## Usage
+
+### Decode a single value
+
+The most common use case — copy a FlatBuffer blob from the database and decode
+it directly, no CSV needed:
+
+```bash
+# Hex-encoded value (e.g. from DBeaver)
+nimrod "0x08000000464253..." -e hex
+
+# Base64-encoded value (default)
+nimrod "RAAAAEZC..."
+
+# Pipe from stdin
+echo "RAAAAEZC..." | nimrod decode
+
+# Compact JSON to a file
+nimrod "0x08000000464253..." -e hex -f compact -o decoded.json
+```
+
+### Decode a CSV export
+
+For bulk decoding of multiple rows exported from DBeaver:
 
 ```bash
 # Simplest — auto-detects binary columns, pretty-prints JSON
@@ -48,18 +84,30 @@ nimrod --csv export.csv --column data --column payload
 
 ### Arguments
 
-| Argument     | Required | Default  | Description                                                    |
-|--------------|----------|----------|----------------------------------------------------------------|
-| `--csv, -c`  | Yes      | —        | Path to CSV export file                                        |
-| `--column`   | No       | auto     | Column name(s) containing FlatBuffer blobs. Omit to auto-detect|
-| `--encoding, -e` | No  | base64   | Encoding of binary data: `base64`, `hex`, or `raw`             |
-| `--format, -f`  | No   | pretty   | Output format: `pretty`, `compact`, or `ndjson`                |
-| `--output, -o`  | No   | stdout   | Output file path                                               |
+**Single value mode** (default when no `--csv`):
+
+| Argument         | Required | Default  | Description                                        |
+|------------------|----------|----------|----------------------------------------------------|
+| `<value>`        | No       | stdin    | The encoded FlatBuffer value (positional arg)      |
+| `--encoding, -e` | No       | base64   | Encoding: `base64`, `hex`, or `raw`                |
+| `--format, -f`   | No       | pretty   | Output format: `pretty` or `compact`               |
+| `--output, -o`   | No       | stdout   | Output file path                                   |
+
+**CSV mode** (`--csv`):
+
+| Argument         | Required | Default  | Description                                                    |
+|------------------|----------|----------|----------------------------------------------------------------|
+| `--csv, -c`      | Yes      | —        | Path to CSV export file                                        |
+| `--column`       | No       | auto     | Column name(s) containing FlatBuffer blobs. Omit to auto-detect|
+| `--encoding, -e` | No       | base64   | Encoding of binary data: `base64`, `hex`, or `raw`             |
+| `--format, -f`   | No       | pretty   | Output format: `pretty`, `compact`, or `ndjson`                |
+| `--output, -o`   | No       | stdout   | Output file path                                               |
 
 ### Subcommands
 
 | Subcommand | Description                           |
 |------------|---------------------------------------|
+| `decode`   | Decode a single FlatBuffer value      |
 | `schemas`  | List all known FlatBuffer schemas     |
 
 ## How It Works
@@ -93,6 +141,7 @@ nimrod/
     │   ├── NimrodApplication.java          # Spring Boot entry point
     │   ├── cli/
     │   │   ├── NimrodCommand.java          # Main CLI command (picocli)
+    │   │   ├── DecodeCommand.java          # 'decode' subcommand (single value)
     │   │   └── SchemasCommand.java         # 'schemas' subcommand
     │   ├── csv/
     │   │   └── CsvReader.java              # CSV parsing + binary detection
@@ -103,6 +152,7 @@ nimrod/
     │       └── JsonWriter.java             # JSON serialisation (pretty/compact/ndjson)
     └── test/java/com/nimrod/
         ├── PlayerProfileDecodeTest.java    # End-to-end decode tests
+        ├── cli/DecodeCommandTest.java      # Single-value decode tests
         ├── csv/CsvReaderTest.java          # CSV reading + encoding tests
         ├── flatbuffers/
         │   ├── FbDecoderTest.java          # Decoder edge cases
