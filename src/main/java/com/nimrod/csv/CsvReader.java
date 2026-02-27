@@ -144,7 +144,13 @@ public class CsvReader {
     private byte[] decodeBinary(String value, Encoding encoding) {
         return switch (encoding) {
             case base64 -> Base64.getDecoder().decode(value.strip());
-            case hex -> HexFormat.of().parseHex(value.strip().replaceAll("[\\s-]", ""));
+            case hex -> {
+                String hex = value.strip();
+                if (hex.startsWith("0x") || hex.startsWith("0X")) {
+                    hex = hex.substring(2);
+                }
+                yield HexFormat.of().parseHex(hex.replaceAll("[\\s-]", ""));
+            }
             case raw -> value.getBytes(StandardCharsets.ISO_8859_1);
         };
     }
