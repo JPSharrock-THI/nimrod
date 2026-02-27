@@ -2,7 +2,6 @@ plugins {
     java
     id("org.springframework.boot") version "3.4.3"
     id("io.spring.dependency-management") version "1.1.7"
-    id("org.graalvm.buildtools.native") version "0.10.4"
 }
 
 group = "com.nimrod"
@@ -42,33 +41,6 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
-// The GraalVM collectReachabilityMetadata and Spring AOT both produce files at
-// META-INF/native-image/com.nimrod/nimrod/ — keep the first copy encountered.
-tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
 springBoot {
     mainClass = "com.nimrod.NimrodApplication"
-}
-
-graalvmNative {
-    binaries {
-        named("main") {
-            imageName = "nimrod"
-            mainClass = "com.nimrod.NimrodApplication"
-
-            buildArgs.addAll(
-                "--no-fallback",
-                "-H:+ReportExceptionStackTraces"
-            )
-
-            javaLauncher = javaToolchains.launcherFor {
-                languageVersion = JavaLanguageVersion.of(21)
-                vendor = JvmVendorSpec.matching("GraalVM Community")
-            }
-        }
-    }
-
-    toolchainDetection = false
 }
