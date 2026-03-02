@@ -43,7 +43,7 @@ public class NimrodCommand implements Callable<Integer>, CommandLineRunner, Exit
     public enum Format { pretty, compact, ndjson }
 
     @Option(names = {"--csv", "-c"},
-            description = "Path to the CSV export file.")
+            description = "Path to the CSV export file. Required format: semicolon (;) separator, double-quote (\") delimiter.")
     private File csv;
 
     @Option(names = {"--column"},
@@ -52,7 +52,7 @@ public class NimrodCommand implements Callable<Integer>, CommandLineRunner, Exit
     private String[] columns;
 
     @Option(names = {"--encoding", "-e"}, defaultValue = "base64",
-            description = "Encoding of binary data in CSV: base64, hex, or raw. Default: ${DEFAULT-VALUE}")
+            description = "Encoding of the input string in CSV columns: base64, hex, or raw. Default: ${DEFAULT-VALUE}")
     private Encoding encoding;
 
     @Option(names = {"--format", "-f"}, defaultValue = "pretty",

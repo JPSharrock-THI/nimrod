@@ -50,7 +50,7 @@ public class DecodeCommand implements Callable<Integer> {
     private String value;
 
     @Option(names = {"--encoding", "-e"}, defaultValue = "base64",
-            description = "Encoding of the value: base64, hex, or raw. Default: ${DEFAULT-VALUE}")
+            description = "Encoding of the input string: base64, hex, or raw. Default: ${DEFAULT-VALUE}")
     private Encoding encoding;
 
     @Option(names = {"--format", "-f"}, defaultValue = "pretty",

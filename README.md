@@ -5,10 +5,10 @@ single values copied from the DB or bulk CSV exports from DBeaver.
 
 ```
 # Single value — just paste it
-nimrod "0xABC123..." -e hex
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar "0xABC123..." -e hex
 
 # Bulk CSV export
-nimrod --csv export.csv
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar --csv export.csv
 ```
 
 Schemas are sourced from `com.bytro.sup:sup-server-db-fbs-schema`. The tool
@@ -46,40 +46,42 @@ it directly, no CSV needed:
 
 ```bash
 # Hex-encoded value (e.g. from DBeaver)
-nimrod "0x08000000464253..." -e hex
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar "0x08000000464253..." -e hex
 
 # Base64-encoded value (default)
-nimrod "RAAAAEZC..."
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar "RAAAAEZC..."
 
 # Pipe from stdin
-echo "RAAAAEZC..." | nimrod decode
+echo "RAAAAEZC..." | java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar decode
 
 # Compact JSON to a file
-nimrod "0x08000000464253..." -e hex -f compact -o decoded.json
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar "0x08000000464253..." -e hex -f compact -o decoded.json
 ```
 
 ### Decode a CSV export
 
-For bulk decoding of multiple rows exported from DBeaver:
+For bulk decoding of multiple rows exported from DBeaver.
+
+**CSV format requirements**: Semicolon (`;`) separator, double-quote (`"`) delimiter.
 
 ```bash
 # Simplest — auto-detects binary columns, pretty-prints JSON
-nimrod --csv export.csv
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar --csv export.csv
 
 # Target a specific column
-nimrod --csv export.csv --column payload
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar --csv export.csv --column payload
 
 # Hex-encoded binary data (default is base64)
-nimrod --csv export.csv --encoding hex
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar --csv export.csv --encoding hex
 
 # Compact JSON to a file
-nimrod --csv export.csv --format compact --output decoded.json
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar --csv export.csv --format compact --output decoded.json
 
 # NDJSON piped to jq
-nimrod --csv export.csv --format ndjson | jq '.payload'
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar --csv export.csv --format ndjson | jq '.payload'
 
 # Multiple binary columns
-nimrod --csv export.csv --column data --column payload
+java -jar build/libs/nimrod-0.1.0-SNAPSHOT.jar --csv export.csv --column data --column payload
 ```
 
 ### Arguments
@@ -89,7 +91,7 @@ nimrod --csv export.csv --column data --column payload
 | Argument         | Required | Default  | Description                                        |
 |------------------|----------|----------|----------------------------------------------------|
 | `<value>`        | No       | stdin    | The encoded FlatBuffer value (positional arg)      |
-| `--encoding, -e` | No       | base64   | Encoding: `base64`, `hex`, or `raw`                |
+| `--encoding, -e` | No       | base64   | Encoding of the input string: `base64`, `hex`, or `raw` |
 | `--format, -f`   | No       | pretty   | Output format: `pretty` or `compact`               |
 | `--output, -o`   | No       | stdout   | Output file path                                   |
 
@@ -99,7 +101,7 @@ nimrod --csv export.csv --column data --column payload
 |------------------|----------|----------|----------------------------------------------------------------|
 | `--csv, -c`      | Yes      | —        | Path to CSV export file                                        |
 | `--column`       | No       | auto     | Column name(s) containing FlatBuffer blobs. Omit to auto-detect|
-| `--encoding, -e` | No       | base64   | Encoding of binary data: `base64`, `hex`, or `raw`             |
+| `--encoding, -e` | No       | base64   | Encoding of the input string in CSV columns: `base64`, `hex`, or `raw` |
 | `--format, -f`   | No       | pretty   | Output format: `pretty`, `compact`, or `ndjson`                |
 | `--output, -o`   | No       | stdout   | Output file path                                               |
 
